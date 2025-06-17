@@ -1,0 +1,257 @@
+# =========================================================================
+#     Makefile for building PureMVC for iOS
+#     Modified from original makefile.gcc
+# =========================================================================
+
+# -------------------------------------------------------------------------
+# iOS specific configurations:
+# -------------------------------------------------------------------------
+
+# iOS SDK settings
+XCODE_PATH = $(shell xcode-select -print-path)
+IOS_SDK_VERSION = $(shell xcrun --sdk iphoneos --show-sdk-version)
+IOS_SDK_PATH = $(shell xcrun --sdk iphoneos --show-sdk-path)
+IOS_SIM_SDK_PATH = $(shell xcrun --sdk iphonesimulator --show-sdk-path)
+
+# Minimum iOS version
+IOS_MIN_VERSION = 11.0
+
+# Architecture settings
+ARCH_DEVICE = arm64
+ARCH_SIMULATOR = x86_64 arm64
+
+# Output directories
+BUILD_DIR = build/ios
+OUTPUT_DIR = lib/ios
+
+# -------------------------------------------------------------------------
+# Configurable options:
+# -------------------------------------------------------------------------
+
+# 'install' program location
+INSTALL ?= install
+
+# Location where the package is installed by 'make install'
+prefix ?= /usr/local
+
+# Destination root (/ is used if empty)
+DESTDIR ?=
+
+# Archiver
+AR = ar
+
+# Ranlib
+RANLIB = ranlib
+
+# Lipo for creating universal binaries
+LIPO = lipo
+
+# C++ compiler
+CXX = clang++
+
+# Standard flags for C++
+CXXFLAGS ?= -std=c++11 -stdlib=libc++
+
+# Standard preprocessor flags (common for CC and CXX)
+CPPFLAGS ?=
+
+# Standard linker flags
+LDFLAGS ?=
+
+# Set to 1 to build debug version [0,1]
+DEBUG ?= 0
+
+# -------------------------------------------------------------------------
+# Do not modify the rest of this file!
+# -------------------------------------------------------------------------
+
+### Variables: ###
+
+# Common flags for all builds
+COMMON_FLAGS = -Iinclude -D_THREAD_SAFE -pthread -fPIC -fembed-bitcode
+
+# Debug/Release flags
+ifeq ($(DEBUG),0)
+DEBUG_FLAGS = -DNDEBUG -O2
+else
+DEBUG_FLAGS = -DDEBUG -g -O0
+endif
+
+# iOS Device flags
+IOS_DEVICE_FLAGS = \
+	-arch $(ARCH_DEVICE) \
+	-isysroot $(IOS_SDK_PATH) \
+	-miphoneos-version-min=$(IOS_MIN_VERSION) \
+	$(COMMON_FLAGS) \
+	$(DEBUG_FLAGS) \
+	$(CXXFLAGS)
+
+# iOS Simulator flags
+IOS_SIM_FLAGS = \
+	-isysroot $(IOS_SIM_SDK_PATH) \
+	-mios-simulator-version-min=$(IOS_MIN_VERSION) \
+	$(COMMON_FLAGS) \
+	$(DEBUG_FLAGS) \
+	$(CXXFLAGS)
+
+# Source files
+SOURCES = \
+	./src/PureMVC/PureMVC.cpp \
+	./src/PureMVC/Core/Model.cpp \
+	./src/PureMVC/Core/View.cpp \
+	./src/PureMVC/Core/Controller.cpp \
+	./src/PureMVC/Patterns/Observer/Notifier.cpp \
+	./src/PureMVC/Patterns/Observer/Notification.cpp \
+	./src/PureMVC/Patterns/Command/SimpleCommand.cpp \
+	./src/PureMVC/Patterns/Command/MacroCommand.cpp \
+	./src/PureMVC/Patterns/Mediator/Mediator.cpp \
+	./src/PureMVC/Patterns/Facade/Facade.cpp \
+	./src/PureMVC/Patterns/Proxy/Proxy.cpp
+
+# Object files for device
+DEVICE_OBJECTS = $(patsubst ./src/%.cpp,$(BUILD_DIR)/device/%.o,$(SOURCES))
+
+# Object files for simulator
+SIM_OBJECTS_X86_64 = $(patsubst ./src/%.cpp,$(BUILD_DIR)/sim-x86_64/%.o,$(SOURCES))
+SIM_OBJECTS_ARM64 = $(patsubst ./src/%.cpp,$(BUILD_DIR)/sim-arm64/%.o,$(SOURCES))
+
+### Targets: ###
+
+all: directories device simulator
+	@echo "Build complete!"
+	@echo "Device library: $(OUTPUT_DIR)/libPureMVC-device.a"
+	@echo "Simulator library: $(OUTPUT_DIR)/libPureMVC-simulator.a"
+	@echo ""
+	@echo "Note: On Apple Silicon Macs, both use arm64 architecture."
+	@echo "Use separate libraries or create XCFramework for universal support."
+
+directories:
+	@mkdir -p $(BUILD_DIR)/device/PureMVC/Core
+	@mkdir -p $(BUILD_DIR)/device/PureMVC/Patterns/Observer
+	@mkdir -p $(BUILD_DIR)/device/PureMVC/Patterns/Command
+	@mkdir -p $(BUILD_DIR)/device/PureMVC/Patterns/Mediator
+	@mkdir -p $(BUILD_DIR)/device/PureMVC/Patterns/Facade
+	@mkdir -p $(BUILD_DIR)/device/PureMVC/Patterns/Proxy
+	@mkdir -p $(BUILD_DIR)/sim-x86_64/PureMVC/Core
+	@mkdir -p $(BUILD_DIR)/sim-x86_64/PureMVC/Patterns/Observer
+	@mkdir -p $(BUILD_DIR)/sim-x86_64/PureMVC/Patterns/Command
+	@mkdir -p $(BUILD_DIR)/sim-x86_64/PureMVC/Patterns/Mediator
+	@mkdir -p $(BUILD_DIR)/sim-x86_64/PureMVC/Patterns/Facade
+	@mkdir -p $(BUILD_DIR)/sim-x86_64/PureMVC/Patterns/Proxy
+	@mkdir -p $(BUILD_DIR)/sim-arm64/PureMVC/Core
+	@mkdir -p $(BUILD_DIR)/sim-arm64/PureMVC/Patterns/Observer
+	@mkdir -p $(BUILD_DIR)/sim-arm64/PureMVC/Patterns/Command
+	@mkdir -p $(BUILD_DIR)/sim-arm64/PureMVC/Patterns/Mediator
+	@mkdir -p $(BUILD_DIR)/sim-arm64/PureMVC/Patterns/Facade
+	@mkdir -p $(BUILD_DIR)/sim-arm64/PureMVC/Patterns/Proxy
+	@mkdir -p $(OUTPUT_DIR)
+
+# Build device library
+$(BUILD_DIR)/device/libPureMVC.a: $(DEVICE_OBJECTS)
+	$(AR) rcs $@ $(DEVICE_OBJECTS)
+	$(RANLIB) $@
+
+# Build simulator x86_64 library
+$(BUILD_DIR)/sim-x86_64/libPureMVC.a: $(SIM_OBJECTS_X86_64)
+	$(AR) rcs $@ $(SIM_OBJECTS_X86_64)
+	$(RANLIB) $@
+
+# Build simulator arm64 library
+$(BUILD_DIR)/sim-arm64/libPureMVC.a: $(SIM_OBJECTS_ARM64)
+	$(AR) rcs $@ $(SIM_OBJECTS_ARM64)
+	$(RANLIB) $@
+
+# Build simulator universal library
+$(BUILD_DIR)/sim/libPureMVC.a: $(BUILD_DIR)/sim-x86_64/libPureMVC.a $(BUILD_DIR)/sim-arm64/libPureMVC.a
+	@mkdir -p $(BUILD_DIR)/sim
+	$(LIPO) -create -output $@ $^
+
+# Create universal library (device + simulator) - XCFramework approach
+$(OUTPUT_DIR)/libPureMVC.xcframework: $(BUILD_DIR)/device/libPureMVC.a $(BUILD_DIR)/sim/libPureMVC.a
+	xcodebuild -create-xcframework \
+		-library $(BUILD_DIR)/device/libPureMVC.a \
+		-library $(BUILD_DIR)/sim/libPureMVC.a \
+		-output $@
+	@echo "Successfully created XCFramework at $(OUTPUT_DIR)/libPureMVC.xcframework"
+
+# Build rules for device objects
+$(BUILD_DIR)/device/%.o: ./src/%.cpp
+	$(CXX) -c -o $@ $(IOS_DEVICE_FLAGS) $<
+
+# Build rules for simulator x86_64 objects
+$(BUILD_DIR)/sim-x86_64/%.o: ./src/%.cpp
+	$(CXX) -c -o $@ -arch x86_64 $(IOS_SIM_FLAGS) $<
+
+# Build rules for simulator arm64 objects
+$(BUILD_DIR)/sim-arm64/%.o: ./src/%.cpp
+	$(CXX) -c -o $@ -arch arm64 $(IOS_SIM_FLAGS) $<
+
+# Clean
+clean:
+	rm -rf $(BUILD_DIR)
+	rm -rf $(OUTPUT_DIR)
+
+# Install
+install: $(OUTPUT_DIR)/libPureMVC.a
+	$(INSTALL) -d $(DESTDIR)$(prefix)/lib/ios
+	$(INSTALL) -m 644 $(OUTPUT_DIR)/libPureMVC.a $(DESTDIR)$(prefix)/lib/ios
+	@echo "Installing headers..."
+	$(INSTALL) -d $(DESTDIR)$(prefix)/include
+	cp -R include/* $(DESTDIR)$(prefix)/include/
+
+# Uninstall
+uninstall:
+	rm -f $(DESTDIR)$(prefix)/lib/ios/libPureMVC.a
+	rm -rf $(DESTDIR)$(prefix)/include/PureMVC
+
+# Build only for device
+device: directories $(BUILD_DIR)/device/libPureMVC.a
+	@mkdir -p $(OUTPUT_DIR)
+	@cp $(BUILD_DIR)/device/libPureMVC.a $(OUTPUT_DIR)/libPureMVC-device.a
+	@echo "Device library created at $(OUTPUT_DIR)/libPureMVC-device.a"
+
+# Build only for simulator
+simulator: directories $(BUILD_DIR)/sim-arm64/libPureMVC.a
+	@mkdir -p $(OUTPUT_DIR)
+	@cp $(BUILD_DIR)/sim-arm64/libPureMVC.a $(OUTPUT_DIR)/libPureMVC-simulator.a
+	@echo "Simulator library created at $(OUTPUT_DIR)/libPureMVC-simulator.a"
+
+# Create XCFramework (recommended for universal support)
+xcframework: device simulator
+	@mkdir -p $(OUTPUT_DIR)
+	xcodebuild -create-xcframework \
+		-library $(OUTPUT_DIR)/libPureMVC-device.a \
+		-headers include \
+		-library $(OUTPUT_DIR)/libPureMVC-simulator.a \
+		-headers include \
+		-output $(OUTPUT_DIR)/PureMVC.xcframework
+	@echo "XCFramework created at $(OUTPUT_DIR)/PureMVC.xcframework"
+
+# Help
+help:
+	@echo "PureMVC iOS Build System"
+	@echo "========================"
+	@echo ""
+	@echo "Available targets:"
+	@echo "  all         - Build both device and simulator libraries"
+	@echo "  device      - Build for iOS devices only"
+	@echo "  simulator   - Build for iOS simulator only"
+	@echo "  xcframework - Create XCFramework (recommended)"
+	@echo "  clean       - Remove all build files"
+	@echo "  install     - Install library and headers"
+	@echo "  uninstall   - Remove installed files"
+	@echo "  help        - Show this help message"
+	@echo ""
+	@echo "Options:"
+	@echo "  DEBUG=1     - Build debug version"
+	@echo "  DEBUG=0     - Build release version (default)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make -f makefile-iOS.gcc device"
+	@echo "  make -f makefile-iOS.gcc simulator"
+	@echo "  make -f makefile-iOS.gcc xcframework"
+	@echo ""
+	@echo "Note: On Apple Silicon Macs (M1/M2), both device and simulator"
+	@echo "      use arm64 architecture. Use XCFramework for universal support."
+
+.PHONY: all clean install uninstall device simulator help directories
